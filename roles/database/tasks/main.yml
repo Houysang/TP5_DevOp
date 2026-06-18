@@ -1,0 +1,53 @@
+---
+# 1. Install MariaDB server
+- name: Install mariadb-server
+  apt:
+    name: mariadb-server
+    state: present
+    update_cache: yes
+
+- name: Install php-mysql
+  apt:
+    name: php-mysql
+    state: present
+
+# 2. Ensure MariaDB is running
+- name: Ensure MariaDB is running
+  service:
+    name: mariadb
+    state: started
+    enabled: yes
+
+# 3. Create staging database
+- name: Create staging_db database
+  mysql_db:
+    name: staging_db
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+# 4. Create production database
+- name: Create prod_db database
+  mysql_db:
+    name: prod_db
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+# 5. Create staging database user
+- name: Create staging database user
+  mysql_user:
+    name: staging_user
+    password: staging_password
+    priv: 'staging_db.*:ALL'
+    host: localhost
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+# 6. Create production database user
+- name: Create production database user
+  mysql_user:
+    name: prod_user
+    password: prod_password
+    priv: 'prod_db.*:ALL'
+    host: localhost
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock

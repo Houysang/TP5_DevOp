@@ -1,60 +1,43 @@
 version: '3.8'
 
 services:
+
+  # =========================
+  # ANSIBLE + APACHE TARGET
+  # =========================
   child-node:
     build:
       context: ./docker-child-node
       dockerfile: Dockerfile
-    container_name: ansible-child-node
+    container_name: child-node
     hostname: child-node
+
     ports:
-      - "2222:22"
-      - "8080:80"
-      - "8081:80"
+      - "2222:22"   # SSH for Ansible
+      - "8080:80"   # Apache web access
+
     networks:
       - ansible-net
-    cap_add:
-      - SYS_ADMIN
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+
     privileged: true
 
-  nginx-first:
-    build:
-      context: ./nginxfirst
-      dockerfile: Dockerfile
-    container_name: nginx-first
-    hostname: nginx-first
-    ports:
-      - "80:80"
-      - "443:443"
-    networks:
-      - ansible-net
-    depends_on:
-      - php-first
     volumes:
-      - ./phpfirst/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - staging_data:/var/www/html/staging
-      - production_data:/var/www/html/production
+      # IMPORTANT: persistent Laravel code (fixes your /public missing issue)
+      - laravel_staging:/var/www/html/staging
+      - laravel_production:/var/www/html/production
 
-  php-first:
-    build:
-      context: ./phpfirst
-      dockerfile: Dockerfile
-    container_name: php-first
-    hostname: php-first
-    networks:
-      - ansible-net
-    expose:
-      - "9000"
-    volumes:
-      - staging_data:/var/www/html/staging
-      - production_data:/var/www/html/production
 
+# =========================
+# OPTIONAL: SHARED VOLUMES
+# =========================
 volumes:
-  staging_data:
-  production_data:
+  laravel_staging:
+  laravel_production:
 
+
+# =========================
+# NETWORK
+# =========================
 networks:
   ansible-net:
     driver: bridge

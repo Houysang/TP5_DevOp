@@ -5,37 +5,22 @@
   gather_facts: yes
 
   vars:
-    repo_url: "https://github.com/laravel/laravel.git"
+    repo_url: "https://github.com/Houysang/TP5_DevOp.git"
     staging_dir: "/var/www/html/staging"
     production_dir: "/var/www/html/production"
     staging_db_name: "staging_db"
     prod_db_name: "prod_db"
     db_host: "localhost"
-    email_recipient: "admin@example.com"
 
   tasks:
 
   # ============================================================
-  # 1. INSTALL APACHE
+  # 1. INSTALL APACHE + PHP + TOOLS
   # ============================================================
-  - name: Install Apache2
-    apt:
-      name: apache2
-      state: present
-      update_cache: yes
-
-  - name: Ensure Apache is running
-    service:
-      name: apache2
-      state: started
-      enabled: yes
-
-  # ============================================================
-  # 2. INSTALL REQUIRED PACKAGES
-  # ============================================================
-  - name: Install dependencies
+  - name: Install packages
     apt:
       name:
+        - apache2
         - git
         - curl
         - unzip
@@ -50,25 +35,30 @@
         - libapache2-mod-php8.3
         - nodejs
         - npm
-        - composer
       state: present
       update_cache: yes
 
-  # ============================================================
-  # 3. APACHE CONFIG (IMPORTANT FIX HERE)
-  # ============================================================
+  - name: Install Composer
+    shell: |
+      curl -sS https://getcomposer.org/installer | php
+      mv composer.phar /usr/local/bin/composer
+      chmod +x /usr/local/bin/composer
+    args:
+      creates: /usr/local/bin/composer
 
-  - name: Enable rewrite module
+  - name: Enable Apache rewrite
     command: a2enmod rewrite
     args:
       creates: /etc/apache2/mods-enabled/rewrite.load
 
-  # 🔥 FIX: Disable default site FIRST
-  - name: Disable default Apache site
+  - name: Disable default site
     command: a2dissite 000-default.conf
     ignore_errors: yes
 
-  - name: Create staging VirtualHost
+  # ============================================================
+  # 2. APACHE VIRTUAL HOSTS
+  # ============================================================
+  - name: Create staging vhost
     copy:
       dest: /etc/apache2/sites-available/staging.conf
       content: |
@@ -80,12 +70,9 @@
                 AllowOverride All
                 Require all granted
             </Directory>
-
-            ErrorLog ${APACHE_LOG_DIR}/staging_error.log
-            CustomLog ${APACHE_LOG_DIR}/staging_access.log combined
         </VirtualHost>
 
-  - name: Create production VirtualHost
+  - name: Create production vhost
     copy:
       dest: /etc/apache2/sites-available/production.conf
       content: |
@@ -97,28 +84,16 @@
                 AllowOverride All
                 Require all granted
             </Directory>
-
-            ErrorLog ${APACHE_LOG_DIR}/production_error.log
-            CustomLog ${APACHE_LOG_DIR}/production_access.log combined
         </VirtualHost>
 
-  - name: Enable staging site
-    command: a2ensite staging.conf
-    args:
-      creates: /etc/apache2/sites-enabled/staging.conf
-
-  - name: Enable production site
-    command: a2ensite production.conf
-    args:
-      creates: /etc/apache2/sites-enabled/production.conf
-
-  - name: Restart Apache
-    service:
-      name: apache2
-      state: restarted
+  - name: Enable sites
+    shell: |
+      a2ensite staging.conf
+      a2ensite production.conf
+    ignore_errors: yes
 
   # ============================================================
-  # 4. CREATE PROJECT DIRECTORIES
+  # 3. CREATE DIRECTORIES FIRST
   # ============================================================
   - name: Create staging directory
     file:
@@ -137,22 +112,28 @@
       mode: "0755"
 
   # ============================================================
-  # 5. DEPLOY STAGING
+  # 4. STAGING DEPLOYMENT
   # ============================================================
-  - name: Clone Laravel staging
+  - name: Clone staging repo
     git:
       repo: "{{ repo_url }}"
       dest: "{{ staging_dir }}"
       force: yes
     become_user: www-data
 
-  - name: Setup .env staging
+  - name: Copy .env staging
     copy:
       src: "{{ staging_dir }}/.env.example"
       dest: "{{ staging_dir }}/.env"
       remote_src: yes
 
-  - name: Configure staging DB
+  - name: Install composer staging
+    shell: |
+      cd {{ staging_dir }}
+      composer install
+    become_user: www-data
+
+  - name: Set staging DB config
     lineinfile:
       path: "{{ staging_dir }}/.env"
       regexp: "^{{ item.key }}="
@@ -161,43 +142,42 @@
       - { key: "DB_HOST", value: "{{ db_host }}" }
       - { key: "DB_DATABASE", value: "{{ staging_db_name }}" }
 
-  - name: Install composer staging
-    command: composer install
-    args:
-      chdir: "{{ staging_dir }}"
-    become_user: www-data
-
-  - name: Generate key staging
-    command: php artisan key:generate
-    args:
-      chdir: "{{ staging_dir }}"
+  - name: Generate APP KEY staging
+    shell: |
+      cd {{ staging_dir }}
+      php artisan key:generate --force
     become_user: www-data
 
   - name: Install npm staging
     shell: |
       cd {{ staging_dir }}
-      npm install
-      npm run build
+      npm install && npm run build
     become_user: www-data
     ignore_errors: yes
 
   # ============================================================
-  # 6. DEPLOY PRODUCTION
+  # 5. PRODUCTION DEPLOYMENT
   # ============================================================
-  - name: Clone Laravel production
+  - name: Clone production repo
     git:
       repo: "{{ repo_url }}"
       dest: "{{ production_dir }}"
       force: yes
     become_user: www-data
 
-  - name: Setup .env production
+  - name: Copy .env production
     copy:
       src: "{{ production_dir }}/.env.example"
       dest: "{{ production_dir }}/.env"
       remote_src: yes
 
-  - name: Configure production DB
+  - name: Install composer production
+    shell: |
+      cd {{ production_dir }}
+      composer install --no-dev
+    become_user: www-data
+
+  - name: Set production DB config
     lineinfile:
       path: "{{ production_dir }}/.env"
       regexp: "^{{ item.key }}="
@@ -206,31 +186,63 @@
       - { key: "DB_HOST", value: "{{ db_host }}" }
       - { key: "DB_DATABASE", value: "{{ prod_db_name }}" }
 
-  - name: Install composer production
-    command: composer install --no-dev
-    args:
-      chdir: "{{ production_dir }}"
-    become_user: www-data
-
-  - name: Generate key production
-    command: php artisan key:generate
-    args:
-      chdir: "{{ production_dir }}"
+  - name: Generate APP KEY production
+    shell: |
+      cd {{ production_dir }}
+      php artisan key:generate --force
     become_user: www-data
 
   - name: Install npm production
     shell: |
       cd {{ production_dir }}
-      npm install
-      npm run build
+      npm install && npm run build
     become_user: www-data
     ignore_errors: yes
 
   # ============================================================
-  # 7. FINAL MESSAGE
+  # 6. FIX PERMISSIONS (IMPORTANT)
   # ============================================================
-  - name: Done message
+  - name: Fix Laravel permissions staging
+    file:
+      path: "{{ staging_dir }}/{{ item }}"
+      state: directory
+      recurse: yes
+      owner: www-data
+      group: www-data
+    loop:
+      - storage
+      - bootstrap/cache
+
+  - name: Fix Laravel permissions production
+    file:
+      path: "{{ production_dir }}/{{ item }}"
+      state: directory
+      recurse: yes
+      owner: www-data
+      group: www-data
+    loop:
+      - storage
+      - bootstrap/cache
+
+  # ============================================================
+  # 7. RESTART APACHE LAST (VERY IMPORTANT)
+  # ============================================================
+  - name: Restart Apache
+    service:
+      name: apache2
+      state: restarted
+
+  # ============================================================
+  # 8. FINAL OUTPUT
+  # ============================================================
+  - name: Final output
     debug:
       msg:
-        - "Staging: http://staging.local:8080"
-        - "Production: http://production.local:8080"
+        - "========================================"
+        - " LARAVEL DEPLOYMENT COMPLETE "
+        - "========================================"
+        - "Staging URL: http://staging.local:8080"
+        - "Production URL: http://production.local:8080"
+        - "Apache: RUNNING"
+        - "Laravel: DEPLOYED"
+        - "========================================"

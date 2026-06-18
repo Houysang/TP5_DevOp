@@ -1,0 +1,282 @@
+---
+# 1. Install nginx, php8.3-fpm, php-xml
+- name: Install nginx
+  apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: Install software-properties-common for PPA support
+  apt:
+    name: software-properties-common
+    state: present
+
+- name: Add ondrej/php repository for PHP 8.3
+  apt_repository:
+    repo: ppa:ondrej/php
+    state: present
+    update_cache: yes
+
+- name: Install php8.3-fpm and php extensions
+  apt:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  loop:
+    - php8.3-fpm
+    - php8.3-xml
+    - php8.3-mysql
+    - php8.3-mbstring
+    - php8.3-curl
+    - php8.3-zip
+    - php8.3-gd
+    - php8.3-intl
+    - php8.3-bcmath
+    - php8.3-cli
+    - php8.3-common
+    - php8.3-mysql
+
+- name: Install npm and composer
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - npm
+    - composer
+
+# 2. Check nginx is running (or install)
+- name: Ensure nginx is running
+  service:
+    name: nginx
+    state: started
+    enabled: yes
+
+# 3. Create staging and production folders
+- name: Create /var/www/html/staging and /var/www/html/production
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0755'
+  loop:
+    - /var/www/html/staging
+    - /var/www/html/production
+
+# 4. Clone from https://github.com/taltongsreng/i4gic2024.git into both folders
+- name: Clone git repository into staging
+  git:
+    repo: https://github.com/taltongsreng/i4gic2024.git
+    dest: /var/www/html/staging
+    version: main
+    force: yes
+
+- name: Clone git repository into production
+  git:
+    repo: https://github.com/taltongsreng/i4gic2024.git
+    dest: /var/www/html/production
+    version: main
+    force: yes
+
+# 5. Copy .env.example to .env
+- name: Copy .env.example to .env for staging
+  copy:
+    src: /var/www/html/staging/.env.example
+    dest: /var/www/html/staging/.env
+    remote_src: yes
+    owner: www-data
+    group: www-data
+    mode: '0644'
+
+- name: Copy .env.example to .env for production
+  copy:
+    src: /var/www/html/production/.env.example
+    dest: /var/www/html/production/.env
+    remote_src: yes
+    owner: www-data
+    group: www-data
+    mode: '0644'
+
+# 6. Configure .env files with database settings
+- name: Set DB_DATABASE to staging_db for staging
+  lineinfile:
+    path: /var/www/html/staging/.env
+    regexp: '^DB_DATABASE='
+    line: 'DB_DATABASE=staging_db'
+
+- name: Set DB_DATABASE to prod_db for production
+  lineinfile:
+    path: /var/www/html/production/.env
+    regexp: '^DB_DATABASE='
+    line: 'DB_DATABASE=prod_db'
+
+- name: Set DB_HOST to localhost for staging
+  lineinfile:
+    path: /var/www/html/staging/.env
+    regexp: '^DB_HOST='
+    line: 'DB_HOST=localhost'
+
+- name: Set DB_HOST to localhost for production
+  lineinfile:
+    path: /var/www/html/production/.env
+    regexp: '^DB_HOST='
+    line: 'DB_HOST=localhost'
+
+- name: Set DB_USERNAME for staging
+  lineinfile:
+    path: /var/www/html/staging/.env
+    regexp: '^DB_USERNAME='
+    line: 'DB_USERNAME=staging_user'
+
+- name: Set DB_USERNAME for production
+  lineinfile:
+    path: /var/www/html/production/.env
+    regexp: '^DB_USERNAME='
+    line: 'DB_USERNAME=prod_user'
+
+- name: Set DB_PASSWORD for staging
+  lineinfile:
+    path: /var/www/html/staging/.env
+    regexp: '^DB_PASSWORD='
+    line: 'DB_PASSWORD=staging_password'
+
+- name: Set DB_PASSWORD for production
+  lineinfile:
+    path: /var/www/html/production/.env
+    regexp: '^DB_PASSWORD='
+    line: 'DB_PASSWORD=prod_password'
+
+- name: Set DB_CONNECTION for staging
+  lineinfile:
+    path: /var/www/html/staging/.env
+    regexp: '^DB_CONNECTION='
+    line: 'DB_CONNECTION=mysql'
+
+- name: Set DB_CONNECTION for production
+  lineinfile:
+    path: /var/www/html/production/.env
+    regexp: '^DB_CONNECTION='
+    line: 'DB_CONNECTION=mysql'
+
+# 7. Run composer install in both folders
+- name: Run composer install in staging
+  composer:
+    command: install
+    working_dir: /var/www/html/staging
+    no_dev: yes
+    optimize_autoloader: yes
+
+- name: Run composer install in production
+  composer:
+    command: install
+    working_dir: /var/www/html/production
+    no_dev: yes
+    optimize_autoloader: yes
+
+# 8. Run npm install in both folders
+- name: Run npm install in staging
+  npm:
+    path: /var/www/html/staging
+
+- name: Run npm install in production
+  npm:
+    path: /var/www/html/production
+
+# 9. Set permissions for storage and bootstrap/cache
+- name: Set permissions for staging/storage
+  file:
+    path: /var/www/html/staging/storage
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0775'
+    recurse: yes
+
+- name: Set permissions for staging/bootstrap/cache
+  file:
+    path: /var/www/html/staging/bootstrap/cache
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0775'
+    recurse: yes
+
+- name: Set permissions for production/storage
+  file:
+    path: /var/www/html/production/storage
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0775'
+    recurse: yes
+
+- name: Set permissions for production/bootstrap/cache
+  file:
+    path: /var/www/html/production/bootstrap/cache
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0775'
+    recurse: yes
+
+# 10. Generate application keys
+- name: Generate application key for staging
+  command: php artisan key:generate
+  args:
+    chdir: /var/www/html/staging
+
+- name: Generate application key for production
+  command: php artisan key:generate
+  args:
+    chdir: /var/www/html/production
+
+# 11. Copy nginx configuration files
+- name: Copy nginx config for staging
+  template:
+    src: nginx_staging.conf.j2
+    dest: /etc/nginx/sites-available/staging
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Copy nginx config for production
+  template:
+    src: nginx_production.conf.j2
+    dest: /etc/nginx/sites-available/production
+    owner: root
+    group: root
+    mode: '0644'
+
+# 12. Enable nginx configurations
+- name: Enable staging nginx site
+  file:
+    src: /etc/nginx/sites-available/staging
+    dest: /etc/nginx/sites-enabled/staging
+    state: link
+
+- name: Enable production nginx site
+  file:
+    src: /etc/nginx/sites-available/production
+    dest: /etc/nginx/sites-enabled/production
+    state: link
+
+# 13. Remove default nginx site
+- name: Remove default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+# 14. Test nginx configuration and restart
+- name: Test nginx configuration
+  command: nginx -t
+
+- name: Restart nginx
+  service:
+    name: nginx
+    state: restarted
+
+# 15. Restart php8.3-fpm
+- name: Restart php8.3-fpm
+  service:
+    name: php8.3-fpm
+    state: restarted

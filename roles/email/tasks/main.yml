@@ -1,0 +1,39 @@
+---
+# Send email with the output results of the deployment
+- name: Collect deployment results
+  set_fact:
+    deployment_summary: |
+      ============================================
+      Ansible Deployment Report
+      ============================================
+      Date: {{ ansible_date_time.iso8601 }}
+      Target Host: {{ ansible_hostname }} ({{ ansible_default_ipv4.address }})
+      ============================================
+      
+      Websites Deployed:
+      -----------------
+      1. Staging: http://i4gic2024.staging
+         - Directory: /var/www/html/staging
+         - Database: staging_db
+         - Git Repo: https://github.com/taltongsreng/i4gic2024.git
+      
+      2. Production: http://i4gic2024.com
+         - Directory: /var/www/html/production
+         - Database: prod_db
+         - Git Repo: https://github.com/taltongsreng/i4gic2024.git
+      
+      ============================================
+      Status: SUCCESS
+      ============================================
+
+- name: Send deployment email
+  mail:
+    host: "{{ smtp_host | default('localhost') }}"
+    port: "{{ smtp_port | default(25) }}"
+    username: "{{ smtp_username | default(omit) }}"
+    password: "{{ smtp_password | default(omit) }}"
+    to: "{{ email_recipient | default('admin@example.com') }}"
+    subject: "Ansible Deployment Report - 2 Laravel Websites"
+    body: "{{ deployment_summary }}"
+    subtype: plain
+  ignore_errors: yes
