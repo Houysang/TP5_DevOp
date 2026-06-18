@@ -1,23 +1,22 @@
 FROM ubuntu:22.04
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y \
+RUN apt update && apt install -y \
     apache2 \
-    openssh-server \
+    php \
+    php-cli \
+    php-mysql \
+    php-curl \
+    php-mbstring \
+    php-xml \
+    php-zip \
+    php-bcmath \
+    unzip \
     git \
     curl \
-    php \
-    libapache2-mod-php \
-    tzdata \
-    && rm -rf /var/lib/apt/lists/*
+    composer
 
-# avoid tzdata prompt
-RUN ln -fs /usr/share/zoneinfo/Asia/Phnom_Penh /etc/localtime && \
-    dpkg-reconfigure -f noninteractive tzdata
+RUN a2enmod rewrite
 
-RUN mkdir /var/run/sshd
+WORKDIR /var/www/html
 
-EXPOSE 22 80
-
-CMD service apache2 start && /usr/sbin/sshd -D
+CMD service apache2 start && tail -f /dev/null
